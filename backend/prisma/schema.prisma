@@ -1,0 +1,251 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["clientExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// ----------- MODELI -----------
+
+model User {
+  id               String         @id @default(cuid())
+  email            String         @unique
+  passwordHash     String
+  name             String
+  phone            String?
+  role             Role           @default(CLIENT)
+  profilePhoto     String?
+  specialties      String?
+  unavailableDates DateTime[]
+  isActive         Boolean        @default(true)
+
+  // Relacije
+  familyMembers       FamilyMember[]
+  appointments        Appointment[]  @relation("UserAppointments")
+  stylistAppointments Appointment[]  @relation("StylistAppointments")
+  stylistServices     Service[]      @relation("StylistServices")
+  chatMessages        ChatMessage[]
+  reviews             Review[]
+  orders              Order[]
+  notifications       Notification[]
+
+  salon               Salon?         @relation(fields: [salonId], references: [id])
+  salonId             String?
+
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime?      @updatedAt
+}
+
+model FamilyMember {
+  id               String        @id @default(cuid())
+  name             String
+
+  user             User          @relation(fields: [userId], references: [id])
+  userId           String
+
+  appointments     Appointment[] @relation("FamilyMemberAppointments")
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime?     @updatedAt
+}
+
+enum Role {
+  CLIENT
+  STYLIST
+  ADMIN
+}
+
+model Service {
+  id               String         @id @default(cuid())
+  name             String
+  description      String?
+  duration         Int
+  price            Float
+  isActive         Boolean        @default(true)
+  imageUrl         String?
+
+  // Relacije
+  stylists         User[]         @relation("StylistServices")
+  appointmentServices AppointmentService[]
+
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model Appointment {
+  id                 String          @id @default(cuid())
+  dateTime           DateTime
+  status             AppointmentStatus @default(SCHEDULED)
+  notes              String?
+  cancellationReason String?
+  internalNotes      String?
+
+  // Relacije
+  user               User            @relation("UserAppointments", fields: [userId], references: [id])
+  userId             String
+
+  familyMember       FamilyMember?   @relation("FamilyMemberAppointments", fields: [familyMemberId], references: [id])
+  familyMemberId     String?
+
+  stylist            User            @relation("StylistAppointments", fields: [stylistId], references: [id])
+  stylistId          String
+
+  services           AppointmentService[]
+  chatMessages       ChatMessage[]
+  review             Review?
+  notifications      Notification[]
+
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+}
+
+// Povezna tabela za many-to-many između Appointment i Service
+model AppointmentService {
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId String
+
+  service       Service    @relation(fields: [serviceId], references: [id])
+  serviceId     String
+
+  @@id([appointmentId, serviceId])
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CANCELLED
+  COMPLETED
+  MISSED
+  PENDING_CONFIRMATION
+}
+
+model ChatMessage {
+  id               String        @id @default(cuid())
+  message          String?
+  imageUrl         String?
+  timestamp        DateTime      @default(now())
+
+  // Relacije
+  appointment      Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId    String
+
+  sender           User          @relation(fields: [senderId], references: [id])
+  senderId         String
+}
+
+model Review {
+  id               String        @id @default(cuid())
+  rating           Int           @db.SmallInt
+  comment          String?
+  createdAt        DateTime      @default(now())
+
+  // Relacije
+  appointment      Appointment   @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId    String        @unique
+
+  user             User          @relation(fields: [userId], references: [id])
+  userId           String
+}
+
+model Category {
+  id               String        @id @default(cuid())
+  name             String        @unique
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  // Relacije
+  products         Product[]
+}
+
+model Product {
+  id               String        @id @default(cuid())
+  name             String
+  description      String?
+  price            Float
+  stock            Int
+  isActive         Boolean       @default(true)
+  imageUrl         String?
+
+  // Relacije
+  category         Category?     @relation(fields: [categoryId], references: [id])
+  categoryId       String?
+  orderItems       OrderItem[]
+
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model Order {
+  id               String        @id @default(cuid())
+  orderDate        DateTime      @default(now())
+  status           OrderStatus   @default(PENDING)
+  total            Float         @default(0)
+  user             User          @relation(fields: [userId], references: [id])
+  userId           String
+  items            OrderItem[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+model OrderItem {
+  id               String        @id @default(cuid())
+  quantity         Int
+  price            Float         // Make sure this exists
+  order            Order         @relation(fields: [orderId], references: [id])
+  orderId          String
+  product          Product       @relation(fields: [productId], references: [id])
+  productId        String
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+}
+
+enum OrderStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+model Notification {
+  id             String           @id @default(cuid())
+  type           NotificationType
+  title          String
+  message        String
+  isRead         Boolean          @default(false)
+  sendAt         DateTime?
+  createdAt      DateTime         @default(now())
+
+  // Relacije
+  user           User             @relation(fields: [userId], references: [id])
+  userId         String
+
+  appointment    Appointment?     @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId  String?
+}
+
+enum NotificationType {
+  REMINDER_24H
+  REMINDER_1H
+  FREE_DAY
+  APPOINTMENT_CHANGED
+  APPOINTMENT_RESCHEDULED  
+  APPOINTMENT_CREATED      
+  APPOINTMENT_CANCELLED    
+  GENERAL
+}
+
+model Salon {
+  id        String   @id @default(cuid())
+  name      String
+  address   String
+  phone     String?
+  imageUrl  String?
+  workingHours Json?
+
+  // Relacije
+  stylists  User[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
